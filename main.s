@@ -1,53 +1,9 @@
-;******************************************************************************
-; TP2d - Gestion d'interruptions concurrentes avec priorités
-;******************************************************************************
-; Objectif : Gérer deux motifs LED simultanés avec bases de temps différentes
-;
-; SPECIFICATIONS :
-; ----------------
-; 1. LED LDM1 (RB4) : Clignotement avec période EXACTE de 1.28 s
-;    - Temps ON : 640 ms
-;    - Temps OFF : 640 ms
-;
-; 2. LEDs LD0-LD7 (RD0-RD7) : Chenillard avec période EXACTE de 1 s
-;    - 8 LEDs => 125.00 ms par LED
-;    - Rotation continue
-;
-; STRATÉGIE DE CONCEPTION :
-; -------------------------
-; Timer 2 (Haute priorité) : Base de temps pour LDM1
-;   - Période : 1.28 ms (pas 640 ms directement !)
-;   - Compteur logiciel : 500 expirations => 640 ms
-;   - Toggle LDM1 toutes les 500 interruptions
-;
-; Timer 0 (Basse priorité) : Base de temps pour chenillard
-;   - Période : 1 ms (pas 125 ms directement !)
-;   - Compteur logiciel : 125 expirations => 125 ms
-;   - Avancer chenillard toutes les 125 interruptions
-;
-; CALCULS DES TIMERS :
-; --------------------
-; Fosc = 64 MHz => Fcy = 16 MHz => Tcyc = 0.0625 µs
-;
-; TIMER 2 - 1.28 ms :
-;   1280 µs / 0.0625 µs = 20480 cycles
-;   Avec Prescaler 1:64 => 20480 / 64 = 320 cycles
-;   PR2 = 320 - 1 = 319 = 0x13F
-;
-; TIMER 0 - 1 ms :
-;   1000 µs / 0.0625 µs = 16000 cycles
-;   16-bit mode, Prescaler 1:16 => 16000 / 16 = 1000 cycles
-;   TMR0 reload = 65536 - 1000 = 64536 = 0xFC18
-;
-; OBSERVATIONS :
-; --------------
-; ✓ Boucle principale vide : CPU géré uniquement par interruptions
-; ✓ Priorités respectées : Timer 2 (haute) peut interrompre Timer 0 (basse)
-; ✓ Timing précis : Périodes exactes grâce aux compteurs logiciels
-; ✓ Exécution simultanée : Les deux motifs fonctionnent indépendamment
-;
-;******************************************************************************
-
+; ==============================================================================
+; Nous observons sur l'oscilloscope un signal rectangulaire d'amplitude 5V, et
+; avec une période de 19,90 µs, soit une période de 0,1 µs de moins par rapport
+; au signal précédent (cf: TP2b_timer2_scrutation)
+; ==============================================================================
+    
 PROCESSOR 18F25K40
 #include <xc.inc>
    
@@ -90,19 +46,12 @@ org 0x100
    
 ; Initialisation ===============================================================
 init:
-    ; ========================================================================
     ; Initialisation des variables
-    ; ========================================================================
     banksel timer2_count
     clrf timer2_count, 1        ; timer2_count = 0
     clrf timer2_count+1, 1
     clrf timer0_count, 1        ; timer0_count = 0
     clrf chenillard_pos, 1      ; chenillard_pos = 0
-    
-    ; ========================================================================
-    ; Configuration des LEDs
-    ; ========================================================================
-    
     ; LDM1 sur RB4
     banksel ANSELB
     clrf ANSELB, 1              ; PORTB en mode digital
@@ -110,7 +59,6 @@ init:
     bcf TRISB, 4, 1             ; RB4 en sortie
     banksel LATB
     bcf LATB, 4, 1              ; LDM1 éteinte initialement
-    
     ; LD0-LD7 sur RD0-RD7
     banksel ANSELD
     clrf ANSELD, 1              ; PORTD en mode digital
@@ -120,9 +68,7 @@ init:
     movlw 0x01                  ; Chenillard démarre sur LD0
     movwf LATD, 1
     
-    ; ========================================================================
     ; Configuration Timer 2 - Base de temps 1.28 ms
-    ; ========================================================================
     ; 1.28 ms = 1280 µs
     ; 1280 µs / 0.0625 µs = 20480 cycles
     ; Avec Prescaler 1:64 => 20480 / 64 = 320 cycles
@@ -130,21 +76,16 @@ init:
     
     banksel T2CON
     clrf T2CON, 1               ; Arrêter Timer 2
-    
     banksel T2CLKCON
     movlw 0x01                  ; Clock source = FOSC/4
     movwf T2CLKCON, 1
-    
     banksel PR2
     movlw 0x3F                  ; PR2 = 319 (partie basse)
     movwf PR2, 1
-    
     banksel T2HLT
-    clrf T2HLT, 1               ; Mode free-running
-    
+    clrf T2HLT, 1               ; Mode free-running 
     banksel TMR2
     clrf TMR2, 1                ; TMR2 = 0
-    
     banksel PIR3
     bcf PIR3, 1, 1              ; Effacer TMR2IF
     
@@ -152,19 +93,9 @@ init:
     banksel T2CON
     movlw b'11110000'           ; TMR2ON=1, Prescaler=111 (1:64), Post=0000 (1:1)
     movwf T2CON, 1
-    
-    ; ========================================================================
-    ; Configuration Timer 0 - Base de temps 1 ms
-    ; ========================================================================
-    ; 1 ms = 1000 µs
-    ; 1000 µs / 0.0625 µs = 16000 cycles
-    ; Mode 16-bit, Prescaler 1:16 => 16000 / 16 = 1000 cycles
-    ; Reload = 65536 - 1000 = 64536 = 0xFC18
-    
     banksel T0CON1
     movlw b'01001000'           ; T0CS=FOSC/4, T0ASYNC=sync, Prescaler=1:16 (0100)
     movwf T0CON1, 1
-    
     banksel T0CON0
     movlw b'10010000'           ; T0EN=1, 16-bit mode
     movwf T0CON0, 1
@@ -175,30 +106,24 @@ init:
     movwf TMR0H, 1
     movlw LOW(64536)
     movwf TMR0L, 1
-    
     banksel PIR0
     bcf PIR0, 5, 1              ; Effacer TMR0IF
     
-    ; ========================================================================
     ; Configuration des interruptions avec priorités
-    ; ========================================================================
     
     ; Activer le système de priorités
     banksel INTCON0
     bsf INTCON0, 5, 1           ; IPEN = 1 (Interrupt Priority Enable)
-    
     ; Timer 2 en HAUTE priorité
     banksel PIE3
     bsf PIE3, 1, 1              ; TMR2IE = 1
     banksel IPR3
     bsf IPR3, 1, 1              ; TMR2IP = 1 (haute priorité)
-    
     ; Timer 0 en BASSE priorité
     banksel PIE0
     bsf PIE0, 5, 1              ; TMR0IE = 1
     banksel IPR0
     bcf IPR0, 5, 1              ; TMR0IP = 0 (basse priorité)
-    
     ; Activer les interruptions globales
     banksel INTCON
     bsf INTCON, 7, 1            ; GIE = 1 (Global Interrupt Enable)
@@ -213,14 +138,11 @@ loop:
     nop                         ; CPU libre pour autres tâches
     goto loop
    
-; ==============================================================================
 ; Routines d'interruption
-; ==============================================================================
 
 ; Interruption HAUTE priorité - Timer 2 (LDM1 - 1.28 ms) ======================
 High_ISR:
     ; Pas besoin de sauvegarder le contexte en haute priorité
-    ; (le matériel le fait automatiquement)
     
     ; Vérifier que c'est bien Timer 2
     banksel PIR3
@@ -235,26 +157,22 @@ High_ISR:
     incf timer2_count, F, 1     ; Incrémenter partie basse
     btfsc STATUS, 2, 0          ; Skip si pas de carry (Z=0)
     incf timer2_count+1, F, 1   ; Incrémenter partie haute si carry
-    
     ; Vérifier si on a atteint 500 (0x01F4)
     movf timer2_count+1, W, 1
     sublw 0x01                  ; W = 0x01 - timer2_count+1
     bnz High_ISR_End            ; Si ≠ 0, pas encore 500
-    
     movf timer2_count, W, 1
     sublw 0xF4                  ; W = 0xF4 - timer2_count
     bnz High_ISR_End            ; Si ≠ 0, pas encore 500
-    
     ; On a atteint 500 => Toggle LDM1 et reset compteur
     clrf timer2_count, 1
     clrf timer2_count+1, 1
-    
     banksel LATB
     btg LATB, 4, 1              ; Toggle RB4 (LDM1)
     
 High_ISR_End:
     banksel 0
-    retfie FAST                 ; Retour rapide (restaure automatiquement)
+    retfie FAST                 ; Retour rapide
 
 ; Interruption BASSE priorité - Timer 0 (Chenillard - 1 ms) ===================
 Low_ISR:
@@ -264,7 +182,6 @@ Low_ISR:
     movwf STATUS_TEMP_LOW, 1
     movf BSR, W, 0
     movwf BSR_TEMP_LOW, 1
-    
     ; Vérifier que c'est bien Timer 0
     banksel PIR0
     btfss PIR0, 5, 1            ; TMR0IF ?
@@ -273,18 +190,16 @@ Low_ISR:
     ; Effacer le flag
     bcf PIR0, 5, 1              ; Effacer TMR0IF
     
-    ; Recharger Timer 0 pour 1 ms
+    ; Recharge Timer 0 pour 1 ms
     banksel TMR0H
     movlw HIGH(64536)
     movwf TMR0H, 1
     movlw LOW(64536)
     movwf TMR0L, 1
     
-    ; Incrémenter le compteur logiciel
     banksel timer0_count
     incf timer0_count, F, 1
     
-    ; Vérifier si on a atteint 125
     movf timer0_count, W, 1
     sublw 125                   ; W = 125 - timer0_count
     bnz Low_ISR_End             ; Si ≠ 0, pas encore 125
