@@ -1,19 +1,48 @@
+; ==============================================================================
+; La LED 0 est connectée à RC0
+; ==============================================================================
+PROCESSOR 18F25K40
+#include <xc.inc>
 
-CLEAN SUCCESSFUL (total time: 51ms)
-"C:\Program Files\Microchip\xc8\v3.10\pic-as\bin\pic-as.exe" -mcpu=PIC18F25K40 -c \
--o build/default/production/_ext/255251204/main.o \
-"../../../../Users/Joan DELAYAT/Desktop/main.s" \
-  -mdfp="C:/Program Files/Microchip/MPLABX/v6.25/packs/Microchip/PIC18F-K_DFP/1.14.301/xc8"  -misa=std -msummary=+mem,-psect,-class,-hex,-file,-sha1,-sha256,-xml,-xmlfull -fmax-errors=20 -mwarn=0 -xassembler-with-cpp
-../../../../Users/Joan DELAYAT/Desktop/main.s:32:: warning: (1522) RAM access bit operand not specified, assuming access-bank
-../../../../Users/Joan DELAYAT/Desktop/main.s:33:: warning: (1522) RAM access bit operand not specified, assuming access-bank
-::: warning: (1311) missing configuration setting for config word 0x300001; using default
-::: warning: (1311) missing configuration setting for config word 0x300002; using default
-::: warning: (1311) missing configuration setting for config word 0x300003; using default
-::: warning: (1311) missing configuration setting for config word 0x300005; using default
-::: warning: (1311) missing configuration setting for config word 0x300006; using default
-::: warning: (1311) missing configuration setting for config word 0x300007; using default
-::: warning: (1311) missing configuration setting for config word 0x300008; using default
-::: warning: (1311) missing configuration setting for config word 0x30000A; using default
-::: warning: (1311) missing configuration setting for config word 0x30000B; using default
+; Configuration ================================================================
+config FEXTOSC = OFF           ; Pas de source d'horloge externe
+config RSTOSC = HFINTOSC_64MHZ ; Horloge interne de 64 MHz
+config WDTE = OFF              ; Desactiver le watchdog timer
+	
+PSECT   code, abs
+   
+msb equ 0x20
+lsb equ 0x21
+leds equ 0x22
+ 
+; Vecteur de reset =============================================================
+org     0x000
+goto init 
+   
+; Vecteur d'interruption haute priorite ========================================
+org     0x008
+goto High_ISR 
 
-BUILD SUCCESSFUL (total time: 459ms)
+; Vecteur d'interruption basse priorite ========================================
+org     0x018
+goto Low_ISR 
+
+; Programme principal ==========================================================
+org 0x100
+
+init:
+    clrf TRISC       ; PORTC en sortie
+    movlw 0x01       ; LED0
+    movwf LATC       ; Allumer LED0
+    
+loop:
+    goto loop               ; Boucle infinie
+
+; Routines d'interruption ======================================================    
+High_ISR:
+    retfie
+    
+Low_ISR:  
+    retfie
+     
+end
