@@ -31,9 +31,6 @@ goto Low_ISR
 org 0x100
 
 init:
-    clrf TRISC       ; PORTC en sortie
-    movlw 0x01       ; LED0
-    movwf LATC       ; Allumer LED0
     
 loop:
     goto loop               ; Boucle infinie
@@ -46,3 +43,4 @@ Low_ISR:
     retfie
      
 end
+
